@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, csv, itertools, math, random, statistics, sys, time
+import argparse, csv, itertools, math, random, re, statistics, sys, time
 import numpy as np
 
 EPS = 1e-9
@@ -15,10 +15,11 @@ class Instancia:
                 linha = linha.strip()
                 if not linha:
                     continue
-                if linha.startswith("NUM_CANDIDATOS"):
-                    self.n = int(linha.split(":")[1]); continue
-                if linha.startswith("NUM_ESCOLAS"):
-                    self.m = int(linha.split(":")[1]); continue
+                if linha.startswith("NUM_CANDIDATOS") or linha.startswith("NUM_ESCOLAS"):
+                    for chave, valor in re.findall(r"(NUM_CANDIDATOS|NUM_ESCOLAS)\s*:\s*(\d+)", linha):
+                        if chave == "NUM_CANDIDATOS": self.n = int(valor)
+                        else: self.m = int(valor)
+                    continue
                 if linha.startswith("#"):
                     if linha.startswith("# CANDIDATOS"): secao = "C"
                     elif linha.startswith("# ESCOLAS"): secao = "E"
@@ -104,12 +105,58 @@ def monta_tipo(inst, stype, t, refinar):
     return {"S": S, "a": a, "custo": custo}
 
 
+def reparo_particao(inst, stype, rng, max_iter=1500):
+    """Busca local sobre a particao escola->tipo minimizando o deficit de capacidade (com tabu).
+    Usada quando o construtivo trava: em instancias muito apertadas a escolha gulosa pode inviabilizar o resto."""
+    T, m = inst.T, inst.m
+    tipos = [t for t in range(T) if inst.demanda[t] > 0]
+    dem = inst.demanda
+    st = stype.copy()
+    capt = [0] * T
+    for j in range(m):
+        if st[j] >= 0: capt[st[j]] += int(inst.cap[j])
+
+    def deficit():
+        return sum(max(0, dem[t] - capt[t]) for t in tipos)
+
+    def aplica(j, t2):
+        u = st[j]
+        if u >= 0: capt[u] -= int(inst.cap[j])
+        if t2 >= 0: capt[t2] += int(inst.cap[j])
+        st[j] = t2
+
+    tabu = {}
+    for it in range(max_iter):
+        d0 = deficit()
+        if d0 == 0:
+            return st
+        movs = [((j, t2),) for j in range(m) for t2 in tipos + [-1] if t2 != st[j]]
+        movs += [((a, st[b]), (b, st[a])) for a, b in itertools.combinations(range(m), 2) if st[a] != st[b]]
+        rng.shuffle(movs)
+        melhor, melhor_d = None, 10 ** 9
+        for mv in movs:
+            antigos = [(j, int(st[j])) for j, _ in mv]
+            for j, t2 in mv: aplica(j, t2)
+            dd = deficit()
+            for j, t2 in antigos: aplica(j, t2)
+            if any(tabu.get(j, -1) > it for j, _ in mv) and dd >= d0:
+                continue
+            if dd < melhor_d:
+                melhor, melhor_d = mv, dd
+        if melhor is None:
+            continue
+        for j, t2 in melhor:
+            aplica(j, t2); tabu[j] = it + 4 + rng.randrange(4)
+    return None
+
+
 def construtivo_uma_vez(inst, rng, alpha, ruido):
     tipos = [t for t in range(inst.T) if inst.demanda[t] > 0]
     chave = {t: inst.demanda[t] * (1 + ruido * rng.uniform(-1, 1)) for t in tipos}
     ordem = sorted(tipos, key=lambda t: -chave[t])             # tipos de maior demanda primeiro
     livres = set(range(inst.m))
     stype = -np.ones(inst.m, dtype=int)
+    travou = False
     for pos, t in enumerate(ordem):
         dem_resto = sum(inst.demanda[u] for u in ordem[pos + 1:])
         tipos_resto = len(ordem) - pos - 1
@@ -120,37 +167,40 @@ def construtivo_uma_vez(inst, rng, alpha, ruido):
             for j in livres:
                 nova_falta = max(0, falta - inst.cap[j])
                 precisa_escolas = tipos_resto + (1 if nova_falta > 0 else 0)
-                if len(livres) - 1 < precisa_escolas:           # sobram escolas para os tipos restantes?
+                if len(livres) - 1 < precisa_escolas:
                     continue
                 if cap_livre - inst.cap[j] < nova_falta + dem_resto:   # sobra capacidade?
                     continue
                 util = min(inst.cap[j], falta)
-                cands.append((inst.media[t][j] / util, j))      # custo por vaga util
+                cands.append((inst.media[t][j] / util, j))
             if not cands:
-                return None
+                travou = True
+                break
             cands.sort()
             k = max(1, math.ceil(alpha * len(cands)))           # lista restrita de candidatas (GRASP)
             j = cands[rng.randrange(k)][1]
             stype[j] = t; livres.discard(j); falta -= inst.cap[j]
+        if travou:
+            break
+    if travou:                                                  # reparo: refaz a particao ate nao haver deficit
+        stype = reparo_particao(inst, stype, rng)
+        if stype is None:
+            return None
     sol = {}
     for t in tipos:
         r = monta_tipo(inst, stype, t, refinar=False)
         if r is None:
             return None
         sol[t] = r
-    return stype, sol
+    return stype, sol, travou
 
 
 def construtivo(inst, rng, alpha, ruido=0.0):
-    for tentativa in range(1000):
-        if tentativa > 0:                                       # reinicio com mais aleatoriedade
-            alpha_, ruido_ = max(alpha, 0.3), max(ruido, 0.5)
-        else:
-            alpha_, ruido_ = alpha, ruido
-        r = construtivo_uma_vez(inst, rng, alpha_, ruido_)
+    for tentativa in range(6):
+        r = construtivo_uma_vez(inst, rng, alpha, ruido)
         if r is not None:
-            return r, tentativa
-    raise RuntimeError("construtivo nao achou solucao viavel")
+            return (r[0], r[1]), int(r[2])                      
+    raise RuntimeError("inviavel: nao existe particao de escolas por tipo que cubra a demanda")
 
 
 def gera_movimentos(inst, stype, tipos):
@@ -163,35 +213,50 @@ def gera_movimentos(inst, stype, tipos):
     fechadas = [j for j in range(inst.m) if stype[j] < 0]
     for a, b in itertools.combinations(abertas, 2):
         if stype[a] != stype[b]:
-            mov.append({a: stype[b], b: stype[a]})                # trocar tipos entre duas escolas
+            mov.append({a: stype[b], b: stype[a]})
     for a in abertas:
         for c in fechadas:
             mov.append({a: -1, c: stype[a]})
     return mov
 
 
-def avalia(inst, stype, sol, mov):
+def tipo_cache(inst, stype, t, cache):
+    """Solucao (guloso + N1/N2) de um tipo para um conjunto de escolas; memoizada dentro da execucao."""
+    S = np.where(stype == t)[0]
+    if S.size == 0 or inst.cap[S].sum() < inst.demanda[t]:
+        return None
+    chave = (t, S.tobytes())
+    if chave not in cache:
+        cache[chave] = monta_tipo(inst, stype, t, refinar=True)
+    return cache[chave]
+
+
+def avalia(inst, stype, sol, mov, cache):
     novo = stype.copy()
     afet = set()
     for j, t in mov.items():
         if stype[j] >= 0: afet.add(int(stype[j]))
         if t >= 0: afet.add(int(t))
         novo[j] = t
+    for t in afet:                                               # viabilidade de capacidade antes de calcular custos
+        S = np.where(novo == t)[0]
+        if S.size == 0 or inst.cap[S].sum() < inst.demanda[t]:
+            return None
     novos, delta = {}, 0.0
     for t in afet:
-        r = monta_tipo(inst, novo, t, refinar=True)
-        if r is None:
-            return None
+        r = tipo_cache(inst, novo, t, cache)
         novos[t] = r
         delta += r["custo"] - sol[t]["custo"]
     return delta, novo, novos
 
 
 def busca_local(inst, stype, sol, rng):
+    cache = {}
     for t in sol:
         S, a = sol[t]["S"], sol[t]["a"]
         d = inst.D[np.ix_(inst.idx[t], S)]
         sol[t]["custo"] = descida_local(d, inst.cap[S], a)
+        cache[(t, S.tobytes())] = sol[t]
     tipos = [t for t in range(inst.T) if inst.demanda[t] > 0]
     n_mov = 0
     while True:
@@ -199,7 +264,7 @@ def busca_local(inst, stype, sol, rng):
         rng.shuffle(movs)
         aceito = False
         for mov in movs:
-            r = avalia(inst, stype, sol, mov)
+            r = avalia(inst, stype, sol, mov, cache)
             if r is not None and r[0] < -EPS:
                 _, stype, novos = r
                 sol.update(novos)
@@ -208,6 +273,47 @@ def busca_local(inst, stype, sol, rng):
         if not aceito:
             break
     return stype, sol, n_mov
+
+
+
+def particao_viavel(inst, limite_nos=2_000_000):
+    """True/False se existe particao de escolas por tipo cobrindo a demanda de cada tipo; None se estourar o limite.
+    Busca exata (DFS, escolas por capacidade decrescente) com memoizacao sobre as capacidades ja limitadas pela demanda."""
+    tipos = [t for t in range(inst.T) if inst.demanda[t] > 0]
+    ordem = sorted(range(inst.m), key=lambda j: -inst.cap[j])
+    caps = [int(inst.cap[j]) for j in ordem]
+    dem = [inst.demanda[t] for t in tipos]
+    resto = [0] * (len(caps) + 1)
+    for k in range(len(caps) - 1, -1, -1):
+        resto[k] = resto[k + 1] + caps[k]
+    falhos, nos = set(), [0]
+
+    def dfs(k, falta):
+        if all(f == 0 for f in falta):
+            return True
+        if k == len(caps) or resto[k] < sum(falta):
+            return False
+        chave = (k, falta)
+        if chave in falhos:
+            return False
+        nos[0] += 1
+        if nos[0] > limite_nos:
+            raise TimeoutError
+        vistos = set()
+        for i, f in enumerate(falta):
+            if f > 0 and f not in vistos:
+                vistos.add(f)
+                nova = list(falta); nova[i] = max(0, f - caps[k])
+                if dfs(k + 1, tuple(nova)):
+                    return True
+        if dfs(k + 1, falta):
+            return True
+        falhos.add(chave)
+        return False
+    try:
+        return dfs(0, tuple(dem))
+    except TimeoutError:
+        return None
 
 
 def custo_total(sol):
@@ -277,7 +383,7 @@ def main():
                     ("melhoria_pct", "melhoria (%)"), ("gap_lb_pct", "gap ao limitante trivial (%)"),
                     ("t_constr", "tempo construtivo (s)"), ("t_busca", "tempo busca local (s)"),
                     ("escolas_ini", "escolas abertas (inicial)"), ("escolas_fim", "escolas abertas (final)"),
-                    ("mov_N3", "movimentos N3 aceitos"), ("reinicios", "reinicios do construtivo")]:
+                    ("mov_N3", "movimentos N3 aceitos"), ("reinicios", "construtivo usou reparo (0/1)")]:
         print(f"  {nome:30s} {est(k)}")
 
     melhor = min(res, key=lambda r: r["final"])
