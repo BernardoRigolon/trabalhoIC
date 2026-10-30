@@ -1,0 +1,33 @@
+instancia,candidatos,escolas,execucoes,melhor,media,desvio,tempo_medio_s,status
+Instancia1_G1.txt,4518,15,10,22206.13,22361.88,115.07,19.88,ok
+Instancia1_G10.txt,4744,15,10,4406.47,4475.99,48.6,14.28,ok
+Instancia1_G11.txt,3452,10,10,19039.1,19226.66,135.49,6.9,ok
+Instancia1_G12.txt,3860,15,10,13188.65,13248.94,50.31,14.26,ok
+Instancia1_G3.txt,5917,20,10,963.2,964.39,0.74,8.75,ok
+Instancia1_G4.txt,3995,12,10,5929.43,6049.47,87.81,8.08,ok
+Instancia1_G5.txt,4213,15,10,6855.82,6990.35,66.56,11.29,ok
+Instancia1_G6.txt,5203,15,10,8595.61,8987.87,189.57,12.94,ok
+Instancia1_G7(1).txt,3357,11,10,10858.21,10975.6,79.48,4.95,ok
+Instancia1_G9.txt,3696,14,10,4852.43,4862.91,6.65,12.9,ok
+Instancia2_G1.txt,4442,15,10,8993.34,9042.69,27.55,23.6,ok
+Instancia2_G10.txt,5116,15,10,5438.57,5801.26,240.78,8.32,ok
+Instancia2_G11.txt,4454,15,10,102164.26,102367.04,139.42,8.53,ok
+Instancia2_G12.txt,3860,15,10,91227.35,91334.2,52.14,9.26,ok
+Instancia2_G2.txt,109,5,10,927.01,954.98,22.16,0.01,ok
+Instancia2_G3.txt,3858,10,10,622.53,622.85,0.21,5.24,ok
+Instancia2_G4.txt,3970,12,10,6940.15,7036.77,65.38,5.99,ok
+Instancia2_G5.txt,4628,15,10,11823.94,11957.37,74.08,10.55,ok
+Instancia2_G6.txt,4809,15,10,18263.19,18574.4,186.79,15.85,ok
+Instancia2_G7.txt,6798,20,10,58221.07,58505.45,226.14,17.24,ok
+Instancia2_G9.txt,4124,14,10,11153.45,11221.18,45.09,15.63,ok
+instancia1_G8.txt,316,12,10,857.88,872.52,8.56,0.08,ok
+instancia2_G8.txt,316,12,10,107.54,107.62,0.05,0.07,ok
+instancia_1_G13.txt,360,14,10,929.47,949.84,16.96,0.41,ok
+instancia_1_G14.txt,370,12,10,1007.02,1019.7,10.04,0.32,ok
+instancia_2_G13.txt,382,16,10,929.81,946.74,9.25,0.49,ok
+instancia_2_G14.txt,362,12,10,1851.25,1866.53,18.15,0.28,ok
+Arquivo G7_inst1.txt,,,,,,,,arquivo fora do formato (AttributeError)
+Instancia1_G2.txt,,,,,,,,inviavel: as salas nao conseguem cobrir a demanda de todos os tipos
+Instancia1_G7.txt,,,,,,,,duplicada de Arquivo G7_inst1.txt (nao executada)
+instancias1.txt,,,,,,,,duplicada de Instancia1_G9.txt (nao executada)
+instancias2.txt,,,,,,,,duplicada de Instancia2_G9.txt (nao executada)
